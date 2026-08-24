@@ -1,7 +1,5 @@
 """HTML/iframe builders for app.py's single-pano flow: map, panorama viewer,
-splat viewer, point-cloud download link. `iframe()` is the canonical sandboxed
-iframe wrapper -- street_builder/map_ui.py imports it from here too, rather
-than keeping its own copy.
+splat viewer, point-cloud download link.
 """
 import html as html_lib
 
@@ -265,31 +263,6 @@ def pointcloud_viewer_with_download(ply_url: str) -> str:
         f'font:600 14px sans-serif;">⬇ Download DA3 point cloud (.ply)</a>'
     )
     return f'<div>{build_pointcloud_viewer(ply_url)}{download_link}</div>'
-
-
-def labeled_download_links(items_in: list[tuple[str, str | None]]) -> str:
-    """Download-link list for a set of labeled .ply results (multiple
-    segments from greedy/pathfind reconstruction, etc). No live viewer
-    here -- download each and drag it into the point-cloud viewer above
-    to compare visually."""
-    items = []
-    for label, path in items_in:
-        if path:
-            items.append(
-                f'<li style="margin:4px 0"><a href="{file_url(path)}" download '
-                f'style="color:#8ab4f8">{html_lib.escape(label)}</a></li>'
-            )
-        else:
-            items.append(
-                f'<li style="margin:4px 0;color:#888">{html_lib.escape(label)} — no views survived</li>'
-            )
-    return (
-        '<div style="padding:12px;background:#1e1e2e;border-radius:8px">'
-        '<p style="color:#aaa;margin:0 0 8px;font:13px sans-serif">'
-        "Results — download each and drag it into the viewer above to compare:</p>"
-        f'<ul style="margin:0;padding-left:20px;font:13px sans-serif;list-style:none">{"".join(items)}</ul>'
-        "</div>"
-    )
 
 
 def build_splat_iframe(ply_url: str) -> str:

@@ -128,19 +128,3 @@ async def download_pano_by_id(pano_id, zoom: int = _DOWNLOAD_ZOOM):
         if not os.path.exists(img_path):
             await download_panorama_image(pano, img_path, zoom=zoom)
         return img_path
-
-
-async def download_images_for_nodes(nodes: list[dict], zoom: int = _DOWNLOAD_ZOOM) -> list[str]:
-    """Download/cache images for an ordered list of {id, ...} node dicts (the
-    shape both pano_to_meta's neighbor entries and street_builder's exported
-    chain nodes share). The one place both the single-pano tab's support-pano
-    gathering and the street-builder reconstruction script should go through,
-    instead of each keeping a separate download implementation."""
-    paths = []
-    for i, node in enumerate(nodes):
-        print(f"Downloading pano {i + 1}/{len(nodes)}: {node['id']}")
-        path = await download_pano_by_id(node["id"], zoom=zoom)
-        if not path:
-            raise ValueError(f"Panorama {node['id']} not found")
-        paths.append(path)
-    return paths

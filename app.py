@@ -29,7 +29,6 @@ import viewers
 from paths import IMAGES_DIR, SPLATS_DIR
 from prompts.presets import PRESET_NAMES, build_prompt, get_preset
 from services import geo, lookaround_fetch, slope_correction, streetview_fetch
-from street_builder.map_selection.tab import build_tab as build_street_builder_tab, BRIDGE_HEAD_SCRIPT, BRIDGE_CSS
 
 # Auto-pick up to N nearest neighbors as DA3 depth-support panos.
 MAX_SUPPORT_PANOS = 2
@@ -196,8 +195,7 @@ def handle_generate(pano_state, scale_mode, output_mode, use_support_panos, corr
     for i, n in enumerate(neighbors):
         try:
             progress(0, desc=f"Downloading support pano {i+1}/{len(neighbors)}...")
-            # By id (same download_pano_by_id street_builder's reconstruction
-            # script uses), not by lat/lon -- avoids a second coordinate
+            # By id, not by lat/lon -- avoids a second coordinate
             # lookup when the exact pano id is already known. Low-res: a
             # support pano only ever feeds DA3 depth/pose, never SHARP's
             # own appearance generation (that's target_path alone).
@@ -250,184 +248,180 @@ def handle_generate(pano_state, scale_mode, output_mode, use_support_panos, corr
 # ── UI ─────────────────────────────────────────────────────────────────────────
 
 with gr.Blocks(title="Street View to 3DGS") as demo:
-    with gr.Tabs():
-        with gr.Tab("Single Panorama"):
-            gr.Markdown(
-                "# Street View to 3DGS\n"
-                "Convert a Google Street View location into a 3D Gaussian Splat scene. "
-                "[[GitHub](https://github.com/YellowO2/streetview-to-3dgs)]\n\n"
-                "**1.** Paste a Google Maps URL → **2.** Optionally edit the panorama → **3.** Generate 3DGS"
-            )
+    gr.Markdown(
+        "# Street View to 3DGS\n"
+        "Convert a Google Street View location into a 3D Gaussian Splat scene. "
+        "[[GitHub](https://github.com/YellowO2/streetview-to-3dgs)]\n\n"
+        "**1.** Paste a Google Maps URL → **2.** Optionally edit the panorama → **3.** Generate 3DGS"
+    )
 
-            pano_state = gr.State(None)
+    pano_state = gr.State(None)
 
-            # ── Step 1 ─────────────────────────────────────────────────────────────────
-            gr.Markdown("## Step 1. Load panorama")
-            with gr.Row(equal_height=True):
-                url_input = gr.Textbox(
-                    placeholder="Google Maps URL or lat,lon (e.g. 1.3237, 103.7555)",
-                    show_label=False,
-                    container=False,
-                    scale=5,
-                )
-                load_btn = gr.Button("Load", variant="primary", scale=1, min_width=80)
-                upload_pano = gr.UploadButton(
-                    "Upload panorama (beta)",
-                    file_types=[".jpg", ".jpeg", ".png"],
-                    scale=1,
-                    min_width=80,
-                )
+    # ── Step 1 ─────────────────────────────────────────────────────────────────
+    gr.Markdown("## Step 1. Load panorama")
+    with gr.Row(equal_height=True):
+        url_input = gr.Textbox(
+            placeholder="Google Maps URL or lat,lon (e.g. 1.3237, 103.7555)",
+            show_label=False,
+            container=False,
+            scale=5,
+        )
+        load_btn = gr.Button("Load", variant="primary", scale=1, min_width=80)
+        upload_pano = gr.UploadButton(
+            "Upload panorama (beta)",
+            file_types=[".jpg", ".jpeg", ".png"],
+            scale=1,
+            min_width=80,
+        )
 
-            pano_dropdown = gr.Dropdown(
-                label="Source pano",
-                info="Other captures of this spot — Google Street View dates and nearby Apple Look Around panos.",
-                choices=[],
-                visible=False,
-            )
+    pano_dropdown = gr.Dropdown(
+        label="Source pano",
+        info="Other captures of this spot — Google Street View dates and nearby Apple Look Around panos.",
+        choices=[],
+        visible=False,
+    )
 
-            with gr.Row(equal_height=True):
-                map_view = gr.HTML(viewers.MAP_PLACEHOLDER, elem_classes="no-pad")
-                pano_view = gr.HTML(viewers.PANO_PLACEHOLDER, elem_classes="no-pad")
+    with gr.Row(equal_height=True):
+        map_view = gr.HTML(viewers.MAP_PLACEHOLDER, elem_classes="no-pad")
+        pano_view = gr.HTML(viewers.PANO_PLACEHOLDER, elem_classes="no-pad")
 
-            pano_download = gr.DownloadButton(
-                label="⬇  Download current panorama",
-                visible=False,
-                size="sm",
-            )
+    pano_download = gr.DownloadButton(
+        label="⬇  Download current panorama",
+        visible=False,
+        size="sm",
+    )
 
-            gr.Markdown("Edit panorama (optional) — ~0.7 min")
-            with gr.Row(equal_height=True):
-                edit_prompt = gr.Textbox(
-                    placeholder="Pick a preset or type your own (e.g. add snow)",
-                    show_label=False,
-                    container=False,
-                    scale=4,
-                    lines=2,
-                )
-                edit_preset = gr.Dropdown(
-                    choices=PRESET_NAMES,
-                    value="(none)",
-                    show_label=False,
-                    container=False,
-                    scale=1,
-                )
-                edit_btn = gr.Button("Edit", scale=1, min_width=80)
+    gr.Markdown("Edit panorama (optional) — ~0.7 min")
+    with gr.Row(equal_height=True):
+        edit_prompt = gr.Textbox(
+            placeholder="Pick a preset or type your own (e.g. add snow)",
+            show_label=False,
+            container=False,
+            scale=4,
+            lines=2,
+        )
+        edit_preset = gr.Dropdown(
+            choices=PRESET_NAMES,
+            value="(none)",
+            show_label=False,
+            container=False,
+            scale=1,
+        )
+        edit_btn = gr.Button("Edit", scale=1, min_width=80)
 
-            def _apply_preset(preset_name):
-                prompt = build_prompt(preset_name)
-                return gr.update(value=prompt) if prompt else gr.update(value="")
+    def _apply_preset(preset_name):
+        prompt = build_prompt(preset_name)
+        return gr.update(value=prompt) if prompt else gr.update(value="")
 
-            edit_preset.change(
-                fn=_apply_preset,
-                inputs=[edit_preset],
-                outputs=[edit_prompt],
-            )
+    edit_preset.change(
+        fn=_apply_preset,
+        inputs=[edit_preset],
+        outputs=[edit_prompt],
+    )
 
-            # ── Step 2 ─────────────────────────────────────────────────────────────────
-            gr.Markdown("## Step 2. Generate 3DGS ~1.8 min")
-            with gr.Row(equal_height=True):
-                scale_mode = gr.Dropdown(
-                    choices=["da3_y_ground", "da3_2dgrid_global"],
-                    value="da3_y_ground",
-                    label="Scale mode",
-                    info="How depth is aligned to the scene.",
-                    scale=2,
-                )
-                output_mode = gr.Dropdown(
-                    choices=["3D Gaussian Splat", "DA3 Point Cloud"],
-                    value="3D Gaussian Splat",
-                    label="Output type",
-                    info="Generate a 3DGS or a point cloud.",
-                    scale=2,
-                )
-                use_support_panos = gr.Checkbox(
-                    value=True,
-                    label="Use supporting panoramas",
-                    info="Nearby panos as DA3 depth/pose context.",
-                    scale=1,
-                )
-                correct_slope = gr.Checkbox(
-                    value=False,
-                    label="Correct for slope (experimental)",
-                    info="De-tilt the target pano using its pitch/roll before DA3.",
-                    scale=1,
-                    visible=False,
-                )
-                slope_multiplier = gr.Number(
-                    value=1.0,
-                    label="Slope correction ×",
-                    info="Scales the pitch/roll correction. Try >1 if 1x isn't enough.",
-                    scale=1,
-                    visible=False,
-                )
-                generate_btn = gr.Button("Generate", variant="primary", scale=1, min_width=160)
+    # ── Step 2 ─────────────────────────────────────────────────────────────────
+    gr.Markdown("## Step 2. Generate 3DGS ~1.8 min")
+    with gr.Row(equal_height=True):
+        scale_mode = gr.Dropdown(
+            choices=["da3_y_ground", "da3_2dgrid_global"],
+            value="da3_y_ground",
+            label="Scale mode",
+            info="How depth is aligned to the scene.",
+            scale=2,
+        )
+        output_mode = gr.Dropdown(
+            choices=["3D Gaussian Splat", "DA3 Point Cloud"],
+            value="3D Gaussian Splat",
+            label="Output type",
+            info="Generate a 3DGS or a point cloud.",
+            scale=2,
+        )
+        use_support_panos = gr.Checkbox(
+            value=True,
+            label="Use supporting panoramas",
+            info="Nearby panos as DA3 depth/pose context.",
+            scale=1,
+        )
+        correct_slope = gr.Checkbox(
+            value=False,
+            label="Correct for slope (experimental)",
+            info="De-tilt the target pano using its pitch/roll before DA3.",
+            scale=1,
+            visible=False,
+        )
+        slope_multiplier = gr.Number(
+            value=1.0,
+            label="Slope correction ×",
+            info="Scales the pitch/roll correction. Try >1 if 1x isn't enough.",
+            scale=1,
+            visible=False,
+        )
+        generate_btn = gr.Button("Generate", variant="primary", scale=1, min_width=160)
 
-            splat_view = gr.HTML(viewers.SPLAT_PLACEHOLDER)
+    splat_view = gr.HTML(viewers.SPLAT_PLACEHOLDER)
 
-            def _refresh_pano_download(state):
-                path = (state or {}).get("image_path") if state else None
-                if path and os.path.exists(path):
-                    return gr.update(visible=True, value=path)
-                return gr.update(visible=False, value=None)
+    def _refresh_pano_download(state):
+        path = (state or {}).get("image_path") if state else None
+        if path and os.path.exists(path):
+            return gr.update(visible=True, value=path)
+        return gr.update(visible=False, value=None)
 
-            pano_state.change(
-                fn=_refresh_pano_download,
-                inputs=[pano_state],
-                outputs=[pano_download],
-            )
+    pano_state.change(
+        fn=_refresh_pano_download,
+        inputs=[pano_state],
+        outputs=[pano_download],
+    )
 
-            load_btn.click(
-                fn=handle_load,
-                inputs=[url_input],
-                outputs=[map_view, pano_view, pano_state, pano_dropdown],
-            )
+    load_btn.click(
+        fn=handle_load,
+        inputs=[url_input],
+        outputs=[map_view, pano_view, pano_state, pano_dropdown],
+    )
 
-            pano_dropdown.change(
-                fn=handle_select_pano,
-                inputs=[pano_state, pano_dropdown],
-                outputs=[map_view, pano_view, pano_state],
-            )
+    pano_dropdown.change(
+        fn=handle_select_pano,
+        inputs=[pano_state, pano_dropdown],
+        outputs=[map_view, pano_view, pano_state],
+    )
 
-            upload_pano.upload(
-                fn=handle_upload,
-                inputs=[upload_pano],
-                outputs=[pano_view, pano_state],
-            ).then(
-                fn=lambda: gr.update(choices=[], value=None, visible=False),
-                outputs=[pano_dropdown],
-            )
+    upload_pano.upload(
+        fn=handle_upload,
+        inputs=[upload_pano],
+        outputs=[pano_view, pano_state],
+    ).then(
+        fn=lambda: gr.update(choices=[], value=None, visible=False),
+        outputs=[pano_dropdown],
+    )
 
-            edit_btn.click(
-                fn=handle_edit,
-                inputs=[pano_state, edit_prompt, edit_preset],
-                outputs=[pano_view, pano_state],
-                show_progress="minimal",
-                show_progress_on=[pano_view],
-            )
+    edit_btn.click(
+        fn=handle_edit,
+        inputs=[pano_state, edit_prompt, edit_preset],
+        outputs=[pano_view, pano_state],
+        show_progress="minimal",
+        show_progress_on=[pano_view],
+    )
 
-            output_mode.change(
-                fn=lambda mode: gr.update(visible=mode == "3D Gaussian Splat"),
-                inputs=[output_mode],
-                outputs=[scale_mode],
-            )
-            output_mode.change(
-                fn=lambda mode: (
-                    gr.update(visible=mode == "DA3 Point Cloud"),
-                    gr.update(visible=mode == "DA3 Point Cloud"),
-                ),
-                inputs=[output_mode],
-                outputs=[correct_slope, slope_multiplier],
-            )
+    output_mode.change(
+        fn=lambda mode: gr.update(visible=mode == "3D Gaussian Splat"),
+        inputs=[output_mode],
+        outputs=[scale_mode],
+    )
+    output_mode.change(
+        fn=lambda mode: (
+            gr.update(visible=mode == "DA3 Point Cloud"),
+            gr.update(visible=mode == "DA3 Point Cloud"),
+        ),
+        inputs=[output_mode],
+        outputs=[correct_slope, slope_multiplier],
+    )
 
-            generate_btn.click(
-                fn=handle_generate,
-                inputs=[pano_state, scale_mode, output_mode, use_support_panos, correct_slope, slope_multiplier],
-                outputs=[splat_view],
-                show_progress="minimal",
-                show_progress_on=[splat_view],
-            )
-        with gr.Tab("Street Builder"):
-            build_street_builder_tab()
+    generate_btn.click(
+        fn=handle_generate,
+        inputs=[pano_state, scale_mode, output_mode, use_support_panos, correct_slope, slope_multiplier],
+        outputs=[splat_view],
+        show_progress="minimal",
+        show_progress_on=[splat_view],
+    )
 
 
 if __name__ == "__main__":
@@ -436,8 +430,7 @@ if __name__ == "__main__":
         server_name="0.0.0.0",
         server_port=7860,
         theme=gr.themes.Default(),
-        css=".no-pad { padding-left: 0 !important; padding-right: 0 !important; } " + BRIDGE_CSS,
-        head=BRIDGE_HEAD_SCRIPT,
+        css=".no-pad { padding-left: 0 !important; padding-right: 0 !important; }",
         # Explicitly off: the startup log showed "with SSR (Node proxy ->
         # Python :7861)" -- an extra Node.js hop HF Spaces enables by
         # default -- right before the Space got stuck permanently on
